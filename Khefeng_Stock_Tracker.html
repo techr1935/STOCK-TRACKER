@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Khefeng Stock Tracker</title>
+<style>
+body{font-family:Arial;margin:0;background:#f3f5f7;color:#222}
+header{background:#1f4e78;color:#fff;padding:22px}
+.container{max-width:1300px;margin:18px auto;padding:0 14px}
+.card{background:#fff;border-radius:10px;padding:18px;margin-bottom:18px;box-shadow:0 2px 8px #0001}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px}
+.metric{padding:15px;border:1px solid #ddd;border-radius:8px}
+.metric h3{margin:0 0 8px}
+.metric .value{font-size:22px;font-weight:bold}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+input,select,button{padding:10px;border:1px solid #ccc;border-radius:6px;box-sizing:border-box}
+button{background:#1f4e78;color:white;border:0;cursor:pointer}
+button.gray{background:#666}.danger{background:#a33}
+.search{width:100%;margin-bottom:10px}
+table{width:100%;border-collapse:collapse}
+th,td{padding:9px;border-bottom:1px solid #ddd;text-align:left}
+th{background:#eee}
+.ok{color:green;font-weight:bold}.low{color:#a66b00;font-weight:bold}.out{color:#b00020;font-weight:bold}
+.actions button{padding:6px;margin:2px}
+.small{font-size:12px;color:#666}
+</style>
+</head>
+<body>
+<header><h1>Khefeng Stock Tracker</h1><div>Alcohol • Smoking • Drinks</div></header>
+<div class="container">
+<div class="card">
+<h2>Category Summary</h2>
+<div class="cards">
+<div class="metric"><h3>🍻 Alcohol</h3><div>Total Units: <b id="aUnits">0</b></div><div>Value: <b id="aValue">M0.00</b></div><div>Low: <b id="aLow">0</b> | Out: <b id="aOut">0</b></div></div>
+<div class="metric"><h3>🚬 Smoking</h3><div>Total Units: <b id="sUnits">0</b></div><div>Value: <b id="sValue">M0.00</b></div><div>Low: <b id="sLow">0</b> | Out: <b id="sOut">0</b></div></div>
+<div class="metric"><h3>🥤 Drinks</h3><div>Total Units: <b id="dUnits">0</b></div><div>Value: <b id="dValue">M0.00</b></div><div>Low: <b id="dLow">0</b> | Out: <b id="dOut">0</b></div></div>
+<div class="metric"><h3>OVERALL</h3><div>Total Units: <b id="allUnits">0</b></div><div>Value: <b id="allValue">M0.00</b></div><div>Low: <b id="allLow">0</b> | Out: <b id="allOut">0</b></div></div>
+</div></div>
+
+<div class="card">
+<h2>Add / Update Product</h2>
+<form id="form">
+<input type="hidden" id="editId">
+<div class="grid">
+<select id="category"><option>Alcohol</option><option>Smoking</option><option>Drinks</option></select>
+<input id="name" placeholder="Product name" required>
+<select id="unit"><option> Bottle</option><option>Pack</option><option>Can</option><option>Piece</option><option>Other</option></select>
+<input id="opening" type="number" min="0" value="0" placeholder="Opening stock">
+<input id="stockIn" type="number" min="0" value="0" placeholder="Stock in">
+<input id="stockOut" type="number" min="0" value="0" placeholder="Stock out">
+<input id="reorder" type="number" min="0" value="5" placeholder="Reorder level">
+<input id="cost" type="number" min="0" step=".01" value="0" placeholder="Unit cost (M)">
+</div><br>
+<button>Save / Update</button> <button type="button" class="gray" onclick="resetForm()">Clear</button>
+</form>
+</div>
+
+<div class="card">
+<input id="search" class="search" placeholder="Search product or category..." oninput="render()">
+<button onclick="exportCSV()">Export CSV</button>
+<button class="gray" onclick="clearAll()">Clear All</button>
+<p class="small">Your data is stored in this browser using local storage.</p>
+<div style="overflow:auto">
+<table><thead><tr><th>Category</th><th>Product</th><th>Unit</th><th>Opening</th><th>In</th><th>Out</th><th>Current</th><th>Reorder</th><th>Cost</th><th>Value</th><th>Status</th><th>Actions</th></tr></thead>
+<tbody id="body"></tbody></table>
+</div>
+</div>
+</div>
+<script>
+const initial=[
+["Alcohol","BLACK LABEL 750ML","Bottle"],["Alcohol","Black Label 500ML","Bottle"],
+["Alcohol","STOUT 750ML","Bottle"],["Alcohol","Stout 500ML","Bottle"],
+["Alcohol","SAVANNA 500ML","Bottle"],["Alcohol","Savanna 330ML","Bottle"],
+["Alcohol","LAGER 750ML","Bottle"],["Alcohol","MALUTI 660ML","Bottle"],
+["Alcohol","REDDS 660ML","Bottle"],["Alcohol","LITE 660ML","Bottle"],
+["Alcohol","Brutal Fruit 500ML","Bottle"],["Drinks","Coca Cola Drink 1 Litre","Bottle"],
+["Smoking","CHIEF","Pack"],["Smoking","STUYVESANT","Pack"],["Smoking","DUNHIL","Pack"]
+];
+let data=JSON.parse(localStorage.getItem("khefengStock")||"null");
+if(!data)data=initial.map((x,i)=>({id:String(i+1),category:x[0],name:x[1],unit:x[2],opening:0,stockIn:0,stockOut:0,reorder:5,cost:0}));
+const $=id=>document.getElementById(id);
+const cur=x=>Number(x.opening)+Number(x.stockIn)-Number(x.stockOut);
+const stat=x=>cur(x)<=0?"OUT OF STOCK":cur(x)<=Number(x.reorder)?"LOW STOCK":"OK";
+function save(){localStorage.setItem("khefengStock",JSON.stringify(data));render()}
+function esc(s){return String(s).replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]))}
+function render(){
+ let q=$("search").value.toLowerCase();
+ let rows=data.filter(x=>(x.category+" "+x.name).toLowerCase().includes(q));
+ $("body").innerHTML=rows.map(x=>{
+  let c=cur(x),st=stat(x),cl=st=="OK"?"ok":st=="LOW STOCK"?"low":"out";
+  return `<tr><td>${esc(x.category)}</td><td>${esc(x.name)}</td><td>${esc(x.unit)}</td><td>${x.opening}</td><td>${x.stockIn}</td><td>${x.stockOut}</td><td><b>${c}</b></td><td>${x.reorder}</td><td>M${Number(x.cost).toFixed(2)}</td><td>M${(c*x.cost).toFixed(2)}</td><td class="${cl}">${st}</td><td class="actions"><button onclick="edit('${x.id}')">Edit</button><button class="danger" onclick="del('${x.id}')">Delete</button></td></tr>`
+ }).join("");
+ let cats={Alcohol:["aUnits","aValue","aLow","aOut"],Smoking:["sUnits","sValue","sLow","sOut"],Drinks:["dUnits","dValue","dLow","dOut"]};
+ for(let [cat,ids] of Object.entries(cats)){
+  let arr=data.filter(x=>x.category==cat), units=arr.reduce((a,x)=>a+cur(x),0), value=arr.reduce((a,x)=>a+cur(x)*x.cost,0);
+  $(ids[0]).textContent=units;$(ids[1]).textContent="M"+value.toFixed(2);$(ids[2]).textContent=arr.filter(x=>stat(x)=="LOW STOCK").length;$(ids[3]).textContent=arr.filter(x=>stat(x)=="OUT OF STOCK").length;
+ }
+ $("allUnits").textContent=data.reduce((a,x)=>a+cur(x),0);
+ $("allValue").textContent="M"+data.reduce((a,x)=>a+cur(x)*x.cost,0).toFixed(2);
+ $("allLow").textContent=data.filter(x=>stat(x)=="LOW STOCK").length;
+ $("allOut").textContent=data.filter(x=>stat(x)=="OUT OF STOCK").length;
+}
+$("form").onsubmit=e=>{e.preventDefault();let id=$("editId").value||Date.now().toString(),obj={id,category:$("category").value,name:$("name").value,unit:$("unit").value,opening:+$("opening").value,stockIn:+$("stockIn").value,stockOut:+$("stockOut").value,reorder:+$("reorder").value,cost:+$("cost").value};let i=data.findIndex(x=>x.id==id);if(i>=0)data[i]=obj;else data.push(obj);save();resetForm()};
+function edit(id){let x=data.find(x=>x.id==id);$("editId").value=x.id;["category","name","unit","opening","stockIn","stockOut","reorder","cost"].forEach(k=>$(k).value=x[k]);scrollTo(0,0)}
+function del(id){if(confirm("Delete this product?")){data=data.filter(x=>x.id!=id);save()}}
+function resetForm(){$("form").reset();$("editId").value="";$("opening").value=0;$("stockIn").value=0;$("stockOut").value=0;$("reorder").value=5;$("cost").value=0}
+function clearAll(){if(confirm("Delete all data?")){data=[];save()}}
+function exportCSV(){let rows=[["Category","Product","Unit","Opening","Stock In","Stock Out","Current","Reorder","Unit Cost","Stock Value","Status"],...data.map(x=>[x.category,x.name,x.unit,x.opening,x.stockIn,x.stockOut,cur(x),x.reorder,x.cost,(cur(x)*x.cost).toFixed(2),stat(x)])];let csv=rows.map(r=>r.map(v=>`"${String(v).replaceAll('"','""')}"`).join(",")).join("\\n");let a=document.createElement("a");a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));a.download="khefeng_stock.csv";a.click()}
+render();
+</script>
+</body></html>
